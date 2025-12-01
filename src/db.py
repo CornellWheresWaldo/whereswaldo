@@ -22,6 +22,17 @@ class User(db.Model):
     
     finds = db.relationship('WaldoFound')
 
+
+    def __init__(self, **kwargs):
+        """
+        Initialize User object
+        """
+        self.username = kwargs.get("username", "")
+        self.email = kwargs.get("email", "")
+        self.profile_image_url = kwargs.get("profile_image_url")
+        self.points = 0
+
+
     def set_password(self,password):
         """
         Sets the password for a user securely
