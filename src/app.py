@@ -1,9 +1,9 @@
 from db import db, User, DailyWaldo, WaldoHint, WaldoFound, Leaderboard
 from flask import Flask, request
-from datetime import date
 import json
 import secrets
 import os
+from datetime import date, datetime
 
 app = Flask(__name__)
 db_filename = 'waldo.db'
@@ -13,139 +13,173 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ECHO"] = True
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
+#initialize the database
 db.init_app(app)
 with app.app_context():
     db.create_all()
 
-# generalized response formats
-def success(data, code=200):
+#success response
+def success_response(data, code=200):
     return json.dumps(data), code
 
-def failure(data, code=404):
+#error response
+def failure_response(data, code=404):
     return json.dumps({"error": data}), code
 
 
-# -- AUTH ROUTES ------------------------------------------------------
-
-
+#-------AUTH ROUTES-------
+#creating/registering a user
 @app.route("/auth/register/", methods=["POST"])
-def register_user():
-    """
-    Endpoint to register a new user with username, email, password, and profile image
-    """
+def create_user():
     body = json.loads(request.data)
-    username = body.get("username")
-    email = body.get("email")
-    profile_image_url = body.get("profile_image_url")
-    if username is None or email is None or profile_image_url is None:
-        return failure("Missing Fields", 404)
-    new_user = User(username, email)
-    password = body.get("password")
-    if password is None:
-        return failure("Password is Missing", 404)
-    new_user.set_password(password)
+    required = ["username", "email", "password", "profile_image_url"]
+    if any(body.get(field) is None for field in required):
+        return failure_response("Please provide all required fields", 400)
+    new_user = User(username=body.get("username"), email=body.get("email"), password=body.get("password"), profile_image_url=body.get("profile_image_url"))
     db.session.add(new_user)
     db.session.commit()
-    return success(new_user.serialize())
+    return success_response(new_user.serialize(), 201)
 
-
-@app.route("/auth/login", methods=["POST"])
+#retrieve username/password to verify login
+@app.route("/auth/login/")
 def login():
-    """
-    Endpoint to login using username and password
-    """
     pass
 
-
-@app.route("/auth/logout/", methods=["POST"])
-def logout():
-    """
-    Endpoint to logout
-    """
+#-------USER ROUTES-------
+#retrieves user profile/data
+@app.route("user/me/")
+def get_me():
     pass
 
-
-# -- USER ROUTES ------------------------------------------------------
-
-
-@app.route("/user/<int:user_id>")
-def get_user(user_id):
-    """
-    Endpoint for getting user by id
-    """
-    user = User.query.filter_by(id=user_id).first()
-    if user is None:
-        return failure("User not Found")
-    return success(user.serialize())
-
-
-# -- WALDO ROUTES ------------------------------------------------------
-
-
-@app.route("/waldo/today/")
-def get_waldo():
-    """
-    Endpoint for getting today's Waldo
-    """
-    today = date.today()
-    waldo = DailyWaldo.query.filter_by(date=today).first()
-    if waldo is None:
-        return failure("Waldo not Found", 404)
-    return success(waldo.serialize())
-
-
-@app.route("/waldo/hint/", methods=["POST"])
-def post_hint():
-    """
-    Endpoint for inputting Waldo hints throughout the day
-    """
-    pass
-
-
-@app.route("/waldo/code/")
-def get_code():
-    """
-    Endpoint for getting code
-    """
-    pass
-
-
-@app.route("/waldo/redeem/")
-def found_waldo():
-    """
-    Endpoint for redeeming points for finding Waldo
-    """
-    pass
-
-
-# -- LEADERBOARD ROUTES ------------------------------------------------------
-
-
-@app.route("/leaderboard/")
-def get_leaderboard():
-    """
-    Endpoint for getting the leaderboard
-    """
-    pass
-
-
-# -- ADMIN ROUTES ------------------------------------------------------
-
-
-@app.route("/admin/waldo/create/<int:waldo_id>/", methods=["POST"])
-def choose_waldo(waldo_id):
-    """
-    Endpoint for choosing Waldo of the Day
-    """
-    pass
-
-
-@app.route("/admin/waldo/users/")
+#retrieves all registered users
+@app.route("/user/users/")
 def get_users():
-    """
-    Endpoint for getting all users
-    """
     users = []
     for user in User.query.all():
         users.append(user.serialize())
-    return success({"users": users})
+    return success_response({"users": users})
+
+#retrieves a user by id
+@app.route("/user/<int:user_id>/")
+def get_user(user_id):
+    user = User.query.filter_by(id=user_id).first()
+    if user is None:
+        return failure("User not Found")
+    return success_response(user.serialize())
+
+
+#-------WALDO ROUTES-------
+#randomly selects daily waldo and creates the secret code
+@app.route("/waldo/create/", methods=["POST"])
+    users = User.query.all()
+    if not users:
+        return failure_response("No users exist to choose from", 400)
+    import random
+    chosen_user = random.choice(users)
+    import secrets
+    secret_code = secrets.token_hex(4)
+    new_waldo = DailyWaldo(user_id=chosen_user.id, date=today, secret_code=secret_code)
+    db.session.add(new_waldo)
+    db.session.commit()
+    return success_response({'new_waldo':new_waldo.serialize()})
+
+#retrieves today's waldo
+@app.route("/waldo/today/")
+def get_waldo():
+    today = date.today()
+    waldo = DailyWaldo.query.filter_by(date=today).first()
+    if waldo is None:
+        waldo = choose_waldo()
+    return success_response(waldo.serialize())
+
+#posts a user to WaldoFound if found waldo and updates points
+@app.route("/waldo/found/", methods=["POST"])
+def found_waldo():
+    body = json.loads(request.data)
+    user_id = body.get("user_id")
+    secret_code = body.get("secret_code")
+    if user_id is None or secret_code is None:
+        return failure_response("Missing user_id or secret_code", 400)
+    today = date.today()
+    waldo = DailyWaldo.query.filter_by(date=today).first()
+    if waldo is None:
+        return failure_response("No Waldo selected today", 404)
+    if waldo.secret_code != secret_code:
+        return failure_response("Invalid code", 403)
+    existing = WaldoFound.query.filter_by(user_id=user_id, date=today).first()
+    if existing:
+        return failure_response("Already found today", 409)
+    created_at = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    now = datetime.utcnow()
+    seconds = (now - created_at).total_seconds()
+    total_points = 1200
+    hours_passed = seconds // 3600
+    points = total_points - (hours_passed * 50)
+    points = max(points, 0)
+    new_find = WaldoFound(
+        daily_waldo_id = waldo.id,
+        user_id = user_id,
+        points_earned = points,
+        date = today
+    )
+    db.session.add(new_find)
+    user = User.query.get(user_id)
+    user.points += points
+    db.session.commit()
+    return success_response({"points_awarded": points, "total_points": user.points})
+
+#create waldo's hints given waldo's id
+@app.route("/waldo/hints/", methods=["POST"])
+def create_hint():
+    body = json.loads(request.data)
+    today = date.today()
+    waldo = DailyWaldo.query.filter_by(date=today).first()
+    if waldo is None:
+        return failure("Waldo does not exist", 404)
+    hint_text = body.get("hint_text")
+    hint_image_url = body.get("hint_image_url")
+    if hint_text is None and hint_image_url is None:
+        return failure_response("Hint cannot be empty", 400)
+    new_hint = WaldoHint(daily_waldo_id=waldo.id, hint_text=hint_text, hint_image_url=hint_image_url)
+    db.session.add(new_hint)
+    db.session.commit()
+    return success_response(new_hint.serialize(), 201)
+
+#get today's hints given waldo's id
+@app.route("/waldo/hints/")
+def get_hints():
+    today = date.today()
+    waldo = DailyWaldo.query.filter_by(date=today).first()
+    if waldo is None:
+        return failure("Waldo not found", 404)
+    hints = []
+    for hint in waldo.hints:
+        hints.append(hint.serialize())
+    return success_response({"hints": hints})
+
+#get waldo's secret code given waldo's id
+@app.route("/waldo/code/")
+def get_secret_code(id):
+    today = date.today()
+    waldo = DailyWaldo.query.filter_by(date=today).first()
+    if waldo is None:
+        return failure("Waldo not found", 404)
+    return success_response({"secret_code": waldo.secret_code})
+
+#adds points to user's score
+@app.route("/user/points/<int:id>/", methods=["POST"])
+def add_user_points(id):
+    body = json.loads(request.data)
+    user = User.query.get(id)
+    if user is None:
+        return failure("User not found", 404)
+    todays_points = body.get("points")
+    if todays_points is None or type(todays_points) is not int:
+        return failure("Invalid or missing 'points'", 400)
+    user.points += todays_points
+    db.session.commit()
+    return success_response({"new_points": user.points})
+
+
+#-------LEADERBOARD ROUTES-------
+#get leaderboard
