@@ -1,4 +1,4 @@
-from db import db, User, DailyWaldo, WaldoHint, WaldoFound, Leaderboard
+from db import db, User, DailyWaldo, WaldoHint, WaldoFound
 from flask import Flask, request
 import json
 import secrets
@@ -35,22 +35,29 @@ def create_user():
     required = ["username", "email", "password", "profile_image_url"]
     if any(body.get(field) is None for field in required):
         return failure_response("Please provide all required fields", 400)
-    new_user = User(username=body.get("username"), email=body.get("email"), password=body.get("password"), profile_image_url=body.get("profile_image_url"))
+    new_user = User(username=body.get("username"), email=body.get("email"), profile_image_url=body.get("profile_image_url"))
+    new_user.set_password(body.get("password"))
     db.session.add(new_user)
     db.session.commit()
     return success_response(new_user.serialize(), 201)
 
-#retrieve username/password to verify login
+#verifies login credientials (email and password)
 @app.route("/auth/login/")
 def login():
-    pass
+    body = json.loads(request.data)
+    email = body.get("email")
+    password = body.get("password")
+    if email is None or password is None:
+        return failure_response("Please provide email and password", 400)
+    user = User.query.filter_by(email=email).first()
+    if user is None:
+        return failure_response("User not found")
+    if not user.check_password(password):
+        return failure_response("Incorrect password", 403)
+    return success_response(user.serialize(), 201)
+
 
 #-------USER ROUTES-------
-#retrieves user profile/data
-@app.route("user/me/")
-def get_me():
-    pass
-
 #retrieves all registered users
 @app.route("/user/users/")
 def get_users():
@@ -59,7 +66,7 @@ def get_users():
         users.append(user.serialize())
     return success_response({"users": users})
 
-#retrieves a user by id
+#retrieves a user by id 
 @app.route("/user/<int:user_id>/")
 def get_user(user_id):
     user = User.query.filter_by(id=user_id).first()
@@ -71,7 +78,9 @@ def get_user(user_id):
 #-------WALDO ROUTES-------
 #randomly selects daily waldo and creates the secret code
 @app.route("/waldo/create/", methods=["POST"])
+def choose_waldo():
     users = User.query.all()
+    today = date.today()
     if not users:
         return failure_response("No users exist to choose from", 400)
     import random
@@ -128,7 +137,7 @@ def found_waldo():
     db.session.commit()
     return success_response({"points_awarded": points, "total_points": user.points})
 
-#create waldo's hints given waldo's id
+#create waldo's hints 
 @app.route("/waldo/hints/", methods=["POST"])
 def create_hint():
     body = json.loads(request.data)
@@ -145,7 +154,7 @@ def create_hint():
     db.session.commit()
     return success_response(new_hint.serialize(), 201)
 
-#get today's hints given waldo's id
+#get today's hints 
 @app.route("/waldo/hints/")
 def get_hints():
     today = date.today()
@@ -157,13 +166,13 @@ def get_hints():
         hints.append(hint.serialize())
     return success_response({"hints": hints})
 
-#get waldo's secret code given waldo's id
+#get waldo's secret code - should only be called by admin
 @app.route("/waldo/code/")
-def get_secret_code(id):
+def get_secret_code():
     today = date.today()
     waldo = DailyWaldo.query.filter_by(date=today).first()
     if waldo is None:
-        return failure("Waldo not found", 404)
+        return failure_response("Waldo not found", 404)
     return success_response({"secret_code": waldo.secret_code})
 
 #adds points to user's score
@@ -172,14 +181,38 @@ def add_user_points(id):
     body = json.loads(request.data)
     user = User.query.get(id)
     if user is None:
-        return failure("User not found", 404)
+        return failure_response("User not found", 404)
     todays_points = body.get("points")
     if todays_points is None or type(todays_points) is not int:
-        return failure("Invalid or missing 'points'", 400)
+        return failure_response("Invalid or missing 'points'", 400)
     user.points += todays_points
     db.session.commit()
     return success_response({"new_points": user.points})
 
+#retrives all waldos found by a user
+@app.route("/user/finds/<int:id>/")
+def waldo_finds(id):
+    waldos_found = WaldoFound.query.filter_by(user_id=id).all()
+    return success_response({"finds":[waldo.serialize for waldo in waldos_found]})
+
 
 #-------LEADERBOARD ROUTES-------
-#get leaderboard
+#get leaderboard - sorts users by points
+@app.route("/leaderboard/")
+def leaderboard():
+    users = User.query.order_by(User.points.desc()).all()
+    leaderboard_data = []
+    rank = 1
+    for user in users:
+        leaderboard_data.append({
+            "rank": rank,
+            "user_id": user.id,
+            "username": user.username,
+            "points": user.points
+        })
+        rank += 1
+    return success_response({"leaderboard": leaderboard_data})
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)

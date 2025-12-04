@@ -2,11 +2,8 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import date, datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
-
-
 db = SQLAlchemy()
 
-#your classes here
 class User(db.Model):
     """
     User model
@@ -18,7 +15,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String, nullable=False, unique=True)
     email = db.Column(db.String, nullable=False, unique=True)
-    password = db.Column(db.String, nullable=False)
+    password_hash = db.Column(db.String, nullable=False)
     profile_image_url = db.Column(db.String, nullable=False)
     points = db.Column(db.Integer, default=0)
     admin = db.Column(db.Boolean, default=False)
@@ -31,11 +28,9 @@ class User(db.Model):
         """
         self.username = kwargs.get("username", "")
         self.email = kwargs.get("email", "")
-        self.password = kwargs.get("password")
         self.profile_image_url = kwargs.get("profile_image_url")
         self.points = 0
         self.admin = kwargs.get("admin", False)
-
 
     def set_password(self,password):
         """
@@ -43,13 +38,11 @@ class User(db.Model):
         """
         self.password_hash = generate_password_hash(password)
 
-
     def check_password(self,password):
         """
         Checks the password for login securely
         """
         return check_password_hash(self.password_hash, password)
-    
 
     def serialize(self):
         """
@@ -125,7 +118,6 @@ class WaldoHint(db.Model):
         self.hint_text = kwargs.get("hint_text")
         self.hint_image_url = kwargs.get("hint_image_url")
 
-
     def serialize(self):
         """
         Serialize a WaldoHint object
@@ -153,6 +145,7 @@ class WaldoFound(db.Model):
     date = db.Column(db.Date, nullable=False, default=date.today)
 
     user = db.relationship('User')
+    waldo = db.relationship('DailyWaldo')
 
     __table_args__ = (db.UniqueConstraint("user_id", "daily_waldo_id", name="uix_user_waldo"),)
 
@@ -171,28 +164,7 @@ class WaldoFound(db.Model):
         """
         return {
             'id': self.id,
-            'user': self.user.username,
-            'points_earned': self.points_earned,
-        }
-    
-
-class Leaderboard(db.Model):
-    """
-    Leaderboard Model - rankings/points for users
-    """
-    __tablename__ = 'leaderboard'
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
-    total_points = db.Column(db.Integer, default=0, nullable=False)
-    rank = db.Column(db.Integer, nullable=True)
-
-    user = db.relationship('User', backref='leaderboard_entry')
-
-    def serialize(self):
-        return {
+            "daily_waldo_id": self.daily_waldo_id,
             'user_id': self.user_id,
-            'username': self.user.username,
-            'total_points': self.total_points,
-            'rank': self.rank
+            'points_earned': self.points_earned
         }
