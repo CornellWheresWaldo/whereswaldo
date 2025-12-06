@@ -42,7 +42,7 @@ def create_user():
     return success_response(new_user.serialize(), 201)
 
 #verifies login credientials (email and password)
-@app.route("/auth/login/")
+@app.route("/auth/login/", methods=['POST'])
 def login():
     body = json.loads(request.data)
     email = body.get("email")
@@ -66,12 +66,12 @@ def get_users():
         users.append(user.serialize())
     return success_response({"users": users})
 
-#retrieves a user by id 
+#retrieves a user by id
 @app.route("/user/<int:user_id>/")
 def get_user(user_id):
     user = User.query.filter_by(id=user_id).first()
     if user is None:
-        return failure("User not Found")
+        return failure_response("User not Found")
     return success_response(user.serialize())
 
 
@@ -137,14 +137,14 @@ def found_waldo():
     db.session.commit()
     return success_response({"points_awarded": points, "total_points": user.points})
 
-#create waldo's hints 
+#create waldo's hints
 @app.route("/waldo/hints/", methods=["POST"])
 def create_hint():
     body = json.loads(request.data)
     today = date.today()
     waldo = DailyWaldo.query.filter_by(date=today).first()
     if waldo is None:
-        return failure("Waldo does not exist", 404)
+        return failure_response("Waldo does not exist", 404)
     hint_text = body.get("hint_text")
     hint_image_url = body.get("hint_image_url")
     if hint_text is None and hint_image_url is None:
@@ -154,13 +154,13 @@ def create_hint():
     db.session.commit()
     return success_response(new_hint.serialize(), 201)
 
-#get today's hints 
+#get today's hints
 @app.route("/waldo/hints/")
 def get_hints():
     today = date.today()
     waldo = DailyWaldo.query.filter_by(date=today).first()
     if waldo is None:
-        return failure("Waldo not found", 404)
+        return failure_response("Waldo not found", 404)
     hints = []
     for hint in waldo.hints:
         hints.append(hint.serialize())

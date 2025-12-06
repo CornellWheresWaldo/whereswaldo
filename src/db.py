@@ -19,7 +19,7 @@ class User(db.Model):
     profile_image_url = db.Column(db.String, nullable=False)
     points = db.Column(db.Integer, default=0)
     admin = db.Column(db.Boolean, default=False)
-    
+
     finds = db.relationship('WaldoFound')
 
     def __init__(self, **kwargs):
@@ -55,12 +55,12 @@ class User(db.Model):
             'profile_image_url': self.profile_image_url,
             'points': self.points
         }
-    
+
 
 class DailyWaldo(db.Model):
     """
     DailyWaldo model - waldo for a specific day
-    User - Many to One 
+    User - Many to One
     WaldoHint - One to Many
     WaldoFind - One to Many
     """
@@ -70,7 +70,7 @@ class DailyWaldo(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     date = db.Column(db.Date, unique=True, nullable=False, default=db.func.current_date())
     secret_code = db.Column(db.String, unique=True, nullable=False)
-    
+
     hints = db.relationship('WaldoHint')
     found = db.relationship('WaldoFound')
     waldo_user = db.relationship('User', backref='daily_waldos')
@@ -95,7 +95,7 @@ class DailyWaldo(db.Model):
             'hints': [hint.serialize() for hint in self.hints],
             'finders': len(self.found)
         }
-    
+
 
 class WaldoHint(db.Model):
     """
@@ -128,7 +128,7 @@ class WaldoHint(db.Model):
             'image': self.hint_image_url,
             'time': self.timestamp.isoformat()
         }
-    
+
 
 class WaldoFound(db.Model):
     """
